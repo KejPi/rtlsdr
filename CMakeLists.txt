@@ -67,11 +67,20 @@ endif()
 # Find build dependencies
 ########################################################################
 if(NOT WIN32)
-find_package(PkgConfig)
-find_package(LibUSB)
-if(NOT LIBUSB_FOUND)
-    message(FATAL_ERROR "LibUSB 1.0 required to compile rtl-sdr")
-endif()
+    find_package(PkgConfig)
+    find_package(LibUSB)
+    if(NOT LIBUSB_FOUND)
+        message(FATAL_ERROR "LibUSB 1.0 required to compile rtl-sdr")
+    endif()
+else()
+    # Windows: if LIBUSB_LIBRARIES is not set then building without
+    if(NOT LIBUSB_LIBRARIES)
+        ADD_DEFINITIONS(-DUSE_WINUSB_API)
+    else()
+        message(STATUS "Using libusb library: ${LIBUSB_LIBRARIES}")
+        set(LIBUSB_LIBRARIES "" CACHE STRING "manual libusb path")
+        set(LIBUSB_INCLUDE_DIR "" CACHE STRING "manual libusb includepath")
+    endif()
 endif()
 
 if(WIN32 AND NOT MINGW)
@@ -88,9 +97,7 @@ endif()
 ########################################################################
 include_directories(
     ${PROJECT_SOURCE_DIR}/include
-if(NOT WIN32)
     ${LIBUSB_INCLUDE_DIR}
-endif()
     ${THREADS_PTHREADS_INCLUDE_DIR}
 )
 

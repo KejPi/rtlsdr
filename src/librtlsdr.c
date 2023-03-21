@@ -17,7 +17,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifdef _WIN32
+#ifdef USE_WINUSB_API
 #include <windows.h>
 #include <WinUsb.h>
 #include <setupapi.h>
@@ -33,7 +33,7 @@
 #include <stdio.h>
 #include <pthread.h>
 
-#ifdef _WIN32
+#ifdef USE_WINUSB_API
 #define LIBUSB_REQUEST_TYPE_VENDOR (0x02 << 5)
 #define LIBUSB_ENDPOINT_IN 0x80
 #define LIBUSB_ENDPOINT_OUT 0x00
@@ -124,7 +124,7 @@ struct softagc_state
 };
 
 struct rtlsdr_dev {
-#ifdef _WIN32
+#ifdef USE_WINUSB_API
 	WINUSB_INTERFACE_HANDLE devh;
 	HANDLE deviceHandle;
 #else
@@ -595,7 +595,7 @@ static rtlsdr_dongle_t *find_known_device(uint16_t vid, uint16_t pid)
 	return device;
 }
 
-#ifdef _WIN32
+#ifdef USE_WINUSB_API
 struct found_device
 {
 	uint16_t vid;
@@ -772,7 +772,7 @@ static int usb_control_transfer(rtlsdr_dev_t *dev, uint8_t type,
 }
 #endif
 
-#ifdef _WIN32
+#ifdef USE_WINUSB_API
 #define rtlsdr_read_array(dev, index, addr, array, len) \
 	usb_control_transfer(dev, CTRL_IN, addr, index, array, len)
 
@@ -1872,7 +1872,7 @@ int rtlsdr_get_offset_tuning(rtlsdr_dev_t *dev)
 	return (dev->offs_freq) ? 1 : 0;
 }
 
-#ifdef _WIN32
+#ifdef USE_WINUSB_API
 uint32_t rtlsdr_get_device_count(void)
 {
 	return List_Devices(-1, NULL);
@@ -2126,7 +2126,7 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 {
 	int r;
 	uint8_t reg;
-#ifdef _WIN32
+#ifdef USE_WINUSB_API
 	struct found_device found;
 #else
 	int i;
@@ -2141,7 +2141,7 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 	if (!dev)
 		return -ENOMEM;
 
-#ifndef _WIN32
+#ifndef USE_WINUSB_API
 	r = libusb_init(&dev->ctx);
 	if(r < 0){
 		free(dev);
@@ -2157,7 +2157,7 @@ int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 	dev->dev_lost = 1;
 	r = -1;
 
-#ifdef _WIN32
+#ifdef USE_WINUSB_API
 	// Initialize the device
 	List_Devices(index, &found);
 	if(!Open_Device(dev, found.DevicePath))
@@ -2449,7 +2449,7 @@ demod_found:
 err:
 	if (dev)
 	{
-#ifdef _WIN32
+#ifdef USE_WINUSB_API
 		Close_Device(dev);
 #else
 		if (dev->devh)
@@ -2483,7 +2483,7 @@ int rtlsdr_close(rtlsdr_dev_t *dev)
 		rtlsdr_deinit_baseband(dev);
 	}
 	pthread_mutex_destroy(&dev->cs_mutex);
-#ifdef _WIN32
+#ifdef USE_WINUSB_API
 	Close_Device(dev);
 #else
 	libusb_release_interface(dev->devh, 0);
@@ -2505,7 +2505,7 @@ int rtlsdr_close(rtlsdr_dev_t *dev)
 	return 0;
 }
 
-#ifdef _WIN32
+#ifdef USE_WINUSB_API
 int rtlsdr_reset_buffer(rtlsdr_dev_t *dev)
 {
 	if (!dev)
@@ -2810,6 +2810,7 @@ static int _rtlsdr_free_async_buffers(rtlsdr_dev_t *dev)
 	return 0;
 }
 
+#if 1
 int rtlsdr_read_async(rtlsdr_dev_t *dev, rtlsdr_read_async_cb_t cb, void *ctx,
 				uint32_t buf_num, uint32_t buf_len)
 {
@@ -2891,7 +2892,10 @@ int rtlsdr_read_async(rtlsdr_dev_t *dev, rtlsdr_read_async_cb_t cb, void *ctx,
 					r = libusb_cancel_transfer(dev->xfer[i]);
 					/* handle events after canceling to
 					 * allow transfer status to propagate */
-					libusb_handle_events_timeout_completed(dev->ctx,
+#ifdef _WIN32
+                    Sleep(1);
+#endif
+                    libusb_handle_events_timeout_completed(dev->ctx,
 												 &zerotv, NULL);
 					if (r < 0)
 						continue;
@@ -2915,6 +2919,10 @@ int rtlsdr_read_async(rtlsdr_dev_t *dev, rtlsdr_read_async_cb_t cb, void *ctx,
 
 	return r;
 }
+#else
+
+#endif
+
 #endif
 
 int rtlsdr_cancel_async(rtlsdr_dev_t *dev)
