@@ -2122,6 +2122,29 @@ int rtlsdr_check_dongle_model(void *dev, char *manufact_check, char *product_che
 	return 0;
 }
 
+
+int rtlsdr_get_index_by_serial(const char *serial)
+{
+    int i, cnt, r;
+    char str[256];
+
+    if (!serial)
+        return -1;
+
+    cnt = rtlsdr_get_device_count();
+
+    if (!cnt)
+        return -2;
+
+    for (i = 0; i < cnt; i++) {
+        r = rtlsdr_get_device_usb_strings(i, NULL, NULL, str);
+        if (!r && !strcmp(serial, str))
+            return i;
+    }
+
+    return -3;
+}
+
 int rtlsdr_open(rtlsdr_dev_t **out_dev, uint32_t index)
 {
 	int r;
