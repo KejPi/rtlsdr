@@ -46,6 +46,7 @@
 
 #include <math.h>
 
+#include "version.h"
 #include "rtl-sdr.h"
 #include "convenience/convenience.h"
 #include "version.h"
