@@ -19,7 +19,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#include <WinUsb.h>
+#include <winusb.h>
 #include <setupapi.h>
 #include <cfgmgr32.h>
 #else
