@@ -551,7 +551,7 @@ static int r82xx_write(struct r82xx_priv *priv, uint8_t reg, uint8_t *buf, int l
 
 	rc = rtlsdr_i2c_write_fn(priv->rtl_dev, priv->cfg->i2c_addr, reg, buf, len);
 	if (rc != len) {
-		printf( "%s: i2c wr failed=%d reg=%02x len=%d\n",
+		fprintf(stderr, "%s: i2c wr failed=%d reg=%02x len=%d\n",
 			   __FUNCTION__, rc, reg, len);
 		if (rc < 0)
 			return rc;
@@ -608,7 +608,7 @@ static int r82xx_read(struct r82xx_priv *priv, uint8_t *buf, int len)
 
 	rc = rtlsdr_i2c_read_fn(priv->rtl_dev, priv->cfg->i2c_addr, 0, buf, len);
 	if (rc != len) {
-		printf( "%s: i2c rd failed=%d len=%d\n",
+		fprintf(stderr, "%s: i2c rd failed=%d len=%d\n",
 			   __FUNCTION__, rc, len);
 		if (rc < 0)
 			return rc;
@@ -632,10 +632,10 @@ static int r82xx_read(struct r82xx_priv *priv, uint8_t *buf, int len)
 	if (rc < 0)
 		return;
 	for(i=0; i<sizeof(data); i++)
-		printf("%02x ", data[i]);
+		fprintf(stderr, "%02x ", data[i]);
 	for(i=sizeof(data); i<32; i++)
-		printf("%02x ", r82xx_read_cache_reg(priv, i));
-	printf("\n");
+		fprintf(stderr, "%02x ", r82xx_read_cache_reg(priv, i));
+	fprintf(stderr, "\n");
 }*/
 
 //RTL-SDR.COM
@@ -650,6 +650,25 @@ static const int16_t abs_freqs_r828d[] = {
 static const int16_t abs_gains_r828d[] = {
 251,245,239,234,224,215,209,202,192,189,184,174,170,170,167,160,157,153,151,130,124,137,125,127,105,100, 90, 89, 92, 84, 87, 98, 93,114,146,129,110, 98, 97, 102,110,121, 187, 230, 241};
 
+//RTL-SDR Blog V4
+static const int16_t abs_freqs_rtlsdr_v4[] = {
+  1,  3,  5, 10, 15, 20, 23, 25, 27, 27, 30, 35, 40, 50, 50, 55, 55, 60, 60, 65, 65, 70, 70, 75, 75, 90, 90,100,100,110,110,120,120,140,140,160,160,174,174,200,220,230,230,240,240,250,250,265,280,280,300,330,360,400,450,500,600,800,1000,1250,1500,1760};
+static const int16_t abs_gains_rtlsdr_v4[] = {
+210,136,112,101,114,138,169,215,255,167,165,168,168,182,171,170,160,159,160,159,152,152,148,148,126,127,127,128,141,140,141,140,149,129,130,140,126,120,115,114,119,127,114,115,114,119,146,119,109,106, 97, 94, 94, 97,106,115,137,169, 189, 206, 211, 208};
+
+static void calculate_abs_gain(struct r82xx_priv *priv)
+{
+	if (priv->cfg->rafael_chip == CHIP_R828D)
+	{
+		if (priv->cfg->xtal > 24000000.0) //RTL-SDR Blog V4
+			priv->abs_gain = interpolate(priv->freq, ARRAY_SIZE(abs_gains_rtlsdr_v4), abs_freqs_rtlsdr_v4, abs_gains_rtlsdr_v4);
+		else
+			priv->abs_gain = interpolate(priv->freq, ARRAY_SIZE(abs_gains_r828d), abs_freqs_r828d, abs_gains_r828d);
+	}
+	else
+		priv->abs_gain = interpolate(priv->freq, ARRAY_SIZE(abs_gains_r820t), abs_freqs_r820t, abs_gains_r820t);
+}
+
 /*
  * r82xx tuning logic
  */
@@ -661,7 +680,8 @@ static int r82xx_set_mux(struct r82xx_priv *priv, uint32_t freq)
 
 	/* Get the proper frequency range */
 	freq = freq / 1000000;
-	for (i = 0; i < ARRAY_SIZE(freq_ranges) - 1; i++) {
+	for (i = 0; i < ARRAY_SIZE(freq_ranges) - 1; i++)
+	{
 		if (freq < freq_ranges[i + 1].freq)
 			break;
 	}
@@ -675,11 +695,6 @@ static int r82xx_set_mux(struct r82xx_priv *priv, uint32_t freq)
 	/* TF BAND */
 	rc = r82xx_write_reg(priv, 0x1b, range->tf_c);
 
-	if (priv->cfg->rafael_chip == CHIP_R828D)
-		priv->abs_gain = interpolate(freq, ARRAY_SIZE(abs_gains_r828d), abs_freqs_r828d, abs_gains_r828d);
-	else
-		priv->abs_gain = interpolate(freq, ARRAY_SIZE(abs_gains_r820t), abs_freqs_r820t, abs_gains_r820t);
-	//printf("abs_gain = %d\n", priv->abs_gain);
 	return rc;
 }
 
@@ -696,7 +711,7 @@ static int r82xx_set_pll(struct r82xx_priv *priv, uint32_t freq)
 	uint8_t data[3];
 
 	if ((freq < 25000000) || (freq > vco_min)){
-		printf( "[R82XX] No valid PLL values for %u Hz!\n", freq);
+		fprintf(stderr, "[R82XX] No valid PLL values for %u Hz!\n", freq);
 		return -1;
 	}
 
@@ -751,7 +766,6 @@ static int r82xx_set_pll(struct r82xx_priv *priv, uint32_t freq)
 	vco_div = (pll_ref + 65536 * vco_freq) / (2 * pll_ref);
     nint = vco_div / 65536;
 	sdm = vco_div % 65536;
-    //printf("nint = %d, sdm = %d\n", nint, sdm);
 
 	ni = (nint - 13) / 4;
 	si = nint - 4 * ni - 13;
@@ -793,7 +807,7 @@ static int r82xx_set_pll(struct r82xx_priv *priv, uint32_t freq)
 	}
 
 	if (!(data[2] & 0x40)) {
-		printf( "[R82XX] PLL not locked for %u Hz!\n", freq);
+		fprintf(stderr, "[R82XX] PLL not locked for %u Hz!\n", freq);
 		priv->has_lock = 0;
 		return -1;
 	}
@@ -818,7 +832,7 @@ static int r82xx_set_pll(struct r82xx_priv *priv, uint32_t freq)
 		}
 		actual_vco = 2 * pll_ref * nint + 2 * pll_ref * (dither_offset + sdm) / 65536;
 		tuning_error = (int)(actual_vco - vco_freq) / mix_div;
-		//printf( "[R82XX] requested %uHz; selected mix_div=%u vco_freq=%lld nint=%u sdm=%u; actual_vco=%lld; xtal=%.1f, tuning error=%dHz\n",
+		//fprintf(stderr,  "[R82XX] requested %uHz; selected mix_div=%u vco_freq=%lld nint=%u sdm=%u; actual_vco=%lld; xtal=%.1f, tuning error=%dHz\n",
 		//		freq, mix_div, vco_freq, nint, sdm, actual_vco, priv->cfg->xtal, tuning_error);
 		if(priv->sideband)
 			zf = priv->int_freq - tuning_error;
@@ -895,7 +909,6 @@ static int r82xx_sysfreq_sel(struct r82xx_priv *priv,
 
 int r82xx_set_gain_mode(struct r82xx_priv *priv, int set_manual_gain)
 {
-	//printf("manual_gain=%d\n", set_manual_gain);
 	return r82xx_write_reg_mask(priv, 0x0c, set_manual_gain ? 0x00 : 0x10, 0x10);
 }
 
@@ -921,13 +934,13 @@ int r82xx_set_i2c_register(struct r82xx_priv *priv, unsigned i2c_register, unsig
 		if(mask & 1)
 		{
 			rtlsdr_set_agc_mode(priv->rtl_dev, data & 1);
-			printf("set agc mode %u\n", data & 1);
+			fprintf(stderr, "set agc mode %u\n", data & 1);
 		}
 		//Reset Demod
 		if((mask & 2) && (data & 2))
 		{
 			rtlsdr_reset_demod(priv->rtl_dev);
-			printf("reset demod\n");
+			fprintf(stderr, "reset demod\n");
 		}
 		if((mask & 8) && (data & 8))
 		{
@@ -994,6 +1007,26 @@ static const int16_t lna_gains_r828d[][16] = {
 	{374, 372, 364, 362, 362, 375, 335, 337, 326, 308, 276, 233, 205},
 	{403, 397, 379, 376, 381, 399, 354, 350, 327, 307, 280, 239, 214}};
 
+static const int16_t lna_freqs_rtlsdr_v4[] = {
+	   1,  10,  27,  27,  50, 100, 120, 120, 150, 200, 230, 230, 250, 250, 350, 500, 750,1000,1250,1500,1760};
+static const int16_t lna_gains_rtlsdr_v4[][21] = {
+	{  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0},
+	{ 19,  20,  22,  19,  22,  21,  21,  20,  21,  23,  24,  24,  25,  32,  21,  21,  19,  18,  17,  18,  18},
+	{ 45,  48,  51,  44,  49,  45,  45,  43,  44,  48,  52,  52,  54,  56,  45,  46,  40,  38,  36,  36,  37},
+	{ 98, 100, 101,  87,  85,  66,  64,  64,  63,  75,  90,  88,  89,  89,  76,  75,  58,  53,  51,  54,  57},
+	{129, 130, 130, 122, 119,  98,  96,  95,  95, 104, 118, 117, 118, 119, 106, 104,  89,  85,  84,  87,  90},
+	{132, 134, 136, 137, 140, 128, 127, 123, 124, 125, 131, 135, 135, 142, 130, 131, 124, 122, 120, 122, 120},
+	{135, 137, 140, 152, 159, 162, 163, 155, 157, 146, 144, 149, 150, 164, 155, 156, 164, 167, 168, 166, 157},
+	{164, 166, 169, 177, 184, 185, 186, 179, 181, 173, 172, 176, 178, 191, 181, 182, 186, 187, 185, 182, 173},
+	{197, 199, 201, 207, 212, 211, 212, 206, 208, 203, 204, 207, 209, 220, 209, 210, 211, 209, 206, 202, 195},
+	{230, 232, 234, 236, 240, 236, 237, 233, 234, 232, 236, 238, 239, 248, 236, 237, 234, 230, 223, 218, 213},
+	{264, 265, 267, 266, 268, 261, 261, 258, 259, 260, 267, 268, 269, 274, 264, 264, 256, 248, 238, 231, 229},
+	{299, 300, 301, 296, 296, 285, 285, 283, 283, 288, 298, 297, 299, 300, 289, 286, 270, 256, 242, 235, 232},
+	{333, 333, 333, 325, 323, 307, 306, 305, 304, 313, 326, 324, 325, 313, 305, 310, 298, 276, 257, 245, 240},
+	{371, 370, 368, 356, 349, 328, 326, 326, 324, 338, 356, 352, 352, 343, 332, 328, 301, 278, 259, 248, 244},
+	{419, 417, 413, 392, 379, 351, 348, 351, 348, 371, 396, 386, 384, 377, 363, 353, 325, 300, 279, 266, 260},
+	{446, 443, 438, 415, 400, 372, 369, 372, 369, 394, 420, 408, 404, 379, 370, 377, 355, 326, 303, 287, 274}};
+
 static const int r82xx_mixer_gains[]  = {
  	0, 13, 32, 49, 63, 76, 91, 105, 119, 133, 148, 161, 174, 174, 174, 174
 };
@@ -1025,6 +1058,7 @@ static int r82xx_get_signal_strength(struct r82xx_priv *priv, unsigned char* dat
 	unsigned int lna_index, lna_gain;
 	int	slave_demod;
 	int if_gain = 0;
+	int filter_gain = 0;
 	uint8_t mixer_gain = (data[3] >> 4) & 0x0f;
 
 	/* set IMR_G */
@@ -1062,16 +1096,28 @@ static int r82xx_get_signal_strength(struct r82xx_priv *priv, unsigned char* dat
 	if(lna_index)
 	{
 		if (priv->cfg->rafael_chip == CHIP_R828D)
-			lna_gain = interpolate(priv->freq, ARRAY_SIZE(lna_freqs_r828d), lna_freqs_r828d, lna_gains_r828d[lna_index]);
+		{
+			if (priv->cfg->xtal > 24000000.0) //RTL-SDR Blog V4
+				lna_gain = interpolate(priv->freq, ARRAY_SIZE(lna_freqs_rtlsdr_v4), lna_freqs_rtlsdr_v4, lna_gains_rtlsdr_v4[lna_index]);
+			else
+				lna_gain = interpolate(priv->freq, ARRAY_SIZE(lna_freqs_r828d), lna_freqs_r828d, lna_gains_r828d[lna_index]);
+		}
 		else
 			lna_gain = interpolate(priv->freq, ARRAY_SIZE(lna_freqs_r820t), lna_freqs_r820t, lna_gains_r820t[lna_index]);
 	}
 	else
 		lna_gain = 0;
 
-	/* Sum_of_all_gains = if_gain + lna_gain + mixer_gain + absolute gain*/
-	//printf("if_gain=%d, lna_gain=%d, mixer_gain=%d, abs_gain=%d\n", if_gain, lna_gain, r82xx_mixer_gains[mixer_gain], priv->abs_gain);
-	return if_gain + lna_gain + r82xx_mixer_gains[mixer_gain] - priv->abs_gain;
+	if(data[6] & 0x20) //filter gain is set
+	{
+		if(data[0x0b] & 0x80) //small bandwidth is set
+			filter_gain = 80;
+		else
+			filter_gain = 40;
+	}
+
+	/* Sum_of_all_gains = if_gain + lna_gain + mixer_gain + filter_gain + absolute gain */
+	return if_gain + lna_gain + r82xx_mixer_gains[mixer_gain] + filter_gain - priv->abs_gain;
 
 }
 
@@ -1186,9 +1232,10 @@ int r82xx_set_freq(struct r82xx_priv *priv, uint32_t freq)
 
 	/* if it's an RTL-SDR Blog V4, automatically upconvert by 28.8 MHz if we tune to HF
 	 * so that we don't need to manually set any upconvert offset in the SDR software */
-	upconvert_freq = is_rtlsdr_blog_v4 ? ((freq <= MHZ(27)) ? (freq + MHZ(28.8)) : freq) : freq;
+	upconvert_freq = is_rtlsdr_blog_v4 ? ((freq <= MHZ(27)) ? (freq + priv->cfg->xtal) : freq) : freq;
 
-	priv->freq = upconvert_freq / 1000000;
+	priv->freq = freq / 1000000;
+	calculate_abs_gain(priv);
 	rc = r82xx_set_mux(priv, upconvert_freq);
 	if (rc < 0)
 		goto err;
@@ -1198,7 +1245,7 @@ int r82xx_set_freq(struct r82xx_priv *priv, uint32_t freq)
 		/* determine if notch filters should be on or off notches are turned OFF
 		 * when tuned within the notch band and ON when tuned outside the notch band.
 		 */
-		open_d = (freq <= MHZ(8) || (freq >= MHZ(60) && freq <= MHZ(115)) || (freq >= MHZ(160) && freq <= MHZ(230))) ? 0x00 : 0x08;
+		open_d = (freq < MHZ(8) || (freq >= MHZ(50) && freq < MHZ(120)) || (freq >= MHZ(160) && freq < MHZ(230))) ? 0x00 : 0x08;
 		rc = r82xx_write_reg_mask(priv, 0x17, open_d, 0x08);
 		if (rc < 0)
 			goto err;
@@ -1206,7 +1253,7 @@ int r82xx_set_freq(struct r82xx_priv *priv, uint32_t freq)
 		/* select tuner band based on frequency and only switch if there is a band change
 		 *(to avoid excessive register writes when tuning rapidly)
 		 */
-		band = (freq <= MHZ(27)) ? HF : ((freq > MHZ(27) && freq < MHZ(250)) ? VHF : UHF);
+		band = (freq < MHZ(27)) ? HF : ((freq >= MHZ(27) && freq < MHZ(250)) ? VHF : UHF);
 
 		/* switch between tuner inputs on the RTL-SDR Blog V4 */
 		if (band != priv->input) {
@@ -1215,6 +1262,11 @@ int r82xx_set_freq(struct r82xx_priv *priv, uint32_t freq)
 			/* activate cable 2 (HF input) */
 			cable_2_in = (band == HF) ? 0x08 : 0x00;
 			rc = r82xx_write_reg_mask(priv, 0x06, cable_2_in, 0x08);
+			if (rc < 0)
+				goto err;
+
+			/* Control upconverter GPIO switch on newer batches */
+			rc = rtlsdr_set_bias_tee_gpio(priv->rtl_dev, 5, !cable_2_in);
 			if (rc < 0)
 				goto err;
 
@@ -1337,7 +1389,6 @@ static int r82xx_multi_read(struct r82xx_priv *priv)
 		Microseconds *= 1000000;
 		Microseconds /= Frequency.QuadPart;
 	};
-	//printf("Microseconds %d\n",(int)Microseconds);
 #else
 	usleep(6000);
 #endif
@@ -1347,9 +1398,7 @@ static int r82xx_multi_read(struct r82xx_priv *priv)
 			return rc;
 		data[1] &= 0x3f;
 		sum += data[1];
-		//buf[i] = data[1];
 	}
-	//printf("data[1] = %02x %02x\n", buf[0],buf[1]);
 	return sum;
 }
 
@@ -1370,7 +1419,6 @@ static int test_imrg(struct r82xx_priv *priv, int start, int end, int *min)
 		{
 			*min = rc;
 			reg8 = i;
-			//printf("Reg8=%02x, sum=%d\n", reg8, rc);
 		}
 		else
 			break;
@@ -1392,7 +1440,7 @@ static int r82xx_imr(struct r82xx_priv *priv, uint8_t range)
 	uint8_t vga;
 	uint8_t gain;
 
-	printf("IMR_G =");
+	fprintf(stderr, "IMR_G =");
 	if (priv->cfg->xtal > 24000000)
 		ring_ref = priv->cfg->xtal / 2000;
 	else
@@ -1422,7 +1470,6 @@ static int r82xx_imr(struct r82xx_priv *priv, uint8_t range)
 	rc = r82xx_set_freq(priv, ring_freq * 1000 - 2 * priv->int_freq); //Image frequency
 	if (rc < 0)
 		return rc;
-	//printf("Freq=%dkHz\n", ring_freq - priv->int_freq / 500);
 
 	for(gain=0; gain < 13; gain++)
 	{
@@ -1460,7 +1507,6 @@ static int r82xx_imr(struct r82xx_priv *priv, uint8_t range)
 				break;
 		}
 		min = rc;
-		//printf("Mixer=%d, VGA=%d\n", gain, vga);
 
 		rc = test_imrg(priv, 0x02, 0x0a, &min);
 		if(rc==0)
@@ -1472,9 +1518,9 @@ static int r82xx_imr(struct r82xx_priv *priv, uint8_t range)
 		if (rc < 0)
 			goto err;
 		priv->reg8[gain] = rc;
-		printf(" %02X", rc);
+		fprintf(stderr, " %02X", rc);
 	}
-	printf("\n");
+	fprintf(stderr, "\n");
 
 	for(gain = 13; gain < 16; gain++)
 		priv->reg8[gain] = priv->reg8[12];
@@ -1482,7 +1528,7 @@ static int r82xx_imr(struct r82xx_priv *priv, uint8_t range)
 
 err:
 	if (rc < 0)
-		printf( "%s: failed=%d\n", __FUNCTION__, rc);
+		fprintf(stderr, "%s: failed=%d\n", __FUNCTION__, rc);
 	return rc;
 }
 
@@ -1537,13 +1583,13 @@ static int r82xx_imr_callibrate(struct r82xx_priv *priv)
 
 	/*gettimeofday(&tv, NULL);
 	EndTime = (uint64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
-	printf("%d msec\n", (int)(EndTime-StartTime));*/
+	fprintf(stderr, "%d msec\n", (int)(EndTime-StartTime));*/
 
 	return 0;
 
 err:
 	if (rc < 0)
-		printf( "%s: failed=%d\n", __FUNCTION__, rc);
+		fprintf(stderr, "%s: failed=%d\n", __FUNCTION__, rc);
 	return rc;
 }
 
@@ -1576,6 +1622,7 @@ int r82xx_init(struct r82xx_priv *priv)
 	// read calibration results from offset 0x80 in eeprom
 	if(rtlsdr_read_eeprom(priv->rtl_dev, buf, offset, 15) == 15)
 	{
+		checksum = 0;
 		for(i=1; i<14; i++)
 			checksum += buf[i];
 		if((buf[0] == 14) && ((checksum & 0xff) == buf[14])) // checksum ok
@@ -1585,10 +1632,10 @@ int r82xx_init(struct r82xx_priv *priv)
 				priv->reg8[i] = priv->reg8[12];
 		}
 		else
-			printf("Image rejection not calibrated yet\n");
+			fprintf(stderr, "Image rejection not calibrated yet\n");
 	}
 	else
-		printf("Reading from eeprom failed\n");
+		fprintf(stderr, "Reading from eeprom failed\n");
 
 	/* Initialize registers */
 	if ((rc = r82xx_write(priv, 0x05, r82xx_init_array, sizeof(r82xx_init_array))) < 0) goto err;
@@ -1602,7 +1649,7 @@ int r82xx_init(struct r82xx_priv *priv)
 
 err:
 	if (rc < 0)
-		printf( "%s: failed=%d\n", __FUNCTION__, rc);
+		fprintf(stderr, "%s: failed=%d\n", __FUNCTION__, rc);
 	return rc;
 }
 
